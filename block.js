@@ -241,6 +241,7 @@ module.exports = class Block {
     this.nextNonce = new Map(prevBlock.nextNonce);
 
     // Adding coinbase reward for prevBlock.
+    // TODO: 
     let winnerBalance = this.balanceOf(prevBlock.rewardAddr);
     if (prevBlock.rewardAddr) this.balances.set(prevBlock.rewardAddr, winnerBalance + prevBlock.totalRewards());
 
