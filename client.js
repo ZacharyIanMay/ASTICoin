@@ -30,6 +30,7 @@ module.exports = class Client extends EventEmitter {
 
     this.net = net;
     this.name = name;
+    this.rands = [];
 
     if (keyPair === undefined) {
       this.keyPair = utils.generateKeypair();
@@ -62,9 +63,14 @@ module.exports = class Client extends EventEmitter {
       this.setGenesisBlock(startingBlock);
     }
 
+    // Set of transactions to be added to the next block.
+    this.transactions = new Set();
+
     // Setting up listeners to receive messages from other clients.
     this.on(Blockchain.PROOF_FOUND, this.receiveBlock);
+    this.on(Blockchain.TEMPLATE_MADE, this.receiveTemplate);
     this.on(Blockchain.MISSING_BLOCK, this.provideMissingBlock);
+    this.on(Blockchain.POST_TRANSACTION, this.addTransaction);
   }
 
   /**
@@ -135,10 +141,23 @@ module.exports = class Client extends EventEmitter {
     }
 
     // Create and broadcast the transaction.
-    return this.postGenericTransaction({
+    let tx = this.postGenericTransaction({
       outputs: outputs,
       fee: fee,
     });
+
+    return this.addTransaction(tx);
+  }
+
+  /**
+   * Returns false if transaction is not accepted. Otherwise stores
+   * the transaction to be added to the next block.
+   * 
+   * @param {Transaction | String} tx - The transaction to add.
+   */
+  addTransaction(tx) {
+    tx = Blockchain.makeTransaction(tx);
+    this.transactions.add(tx);
   }
 
   /**
@@ -197,6 +216,19 @@ module.exports = class Client extends EventEmitter {
     // Ignore the block if it has been received previously.
     if (this.blocks.has(block.id)) return null;
 
+    // First, make sure that the block producer is not one of the electors
+    if(block.electors.includes(block.rewardAddr))
+    {
+      return null;
+    }
+
+    // Next, make sure that the random number in the block corresponds to the correct address
+    // TODO: also make sure this matches with the actual generated random number for this block
+    let arr = this.makeFTSArr(block.prevBlock.balances);
+    if(arr[block.rand] !== block.rewardAddr || this.rands[block.chainLength])
+    {
+      return null;
+    }
     // First, make sure that the block has a valid proof. 
     if (!block.hasValidProof() && !block.isGenesisBlock()) {
       this.log(`Block ${block.id} does not have a valid proof.`);
@@ -249,6 +281,101 @@ module.exports = class Client extends EventEmitter {
     });
 
     return block;
+  }
+
+  receiveTemplate(block) {
+    // If the block is a string, then deserialize it.
+    block = Blockchain.deserializeBlock(block);
+
+    // Make sure that we have the previous blocks, unless it is the genesis block.
+    // If we don't have the previous blocks, request the missing blocks and exit.
+    let prevBlock = this.blocks.get(block.prevBlockHash);
+    if (!prevBlock && !block.isGenesisBlock()) {
+      let stuckBlocks = this.pendingBlocks.get(block.prevBlockHash);
+
+      // If this is the first time that we have identified this block as missing,
+      // send out a request for the block.
+      if (stuckBlocks === undefined) { 
+        this.requestMissingBlock(block);
+        stuckBlocks = new Set();
+      }
+      stuckBlocks.add(block);
+
+      this.pendingBlocks.set(block.prevBlockHash, stuckBlocks);
+      return null;
+    }
+
+    if (!block.isGenesisBlock()) {
+      // Verify the block, and store it if everything looks good.
+      // This code will trigger an exception if there are any invalid transactions.
+      let success = block.rerun(prevBlock);
+      if (!success) return null;
+    }
+
+    let roundRand = block.rand;
+    this.rands[block.chainLength] = roundRand;
+    if(this.address === roundRand)
+    {
+      this.finishBlock(block);
+    }
+
+    // Go through any blocks that were waiting for this block
+    // and recursively call receiveBlock.
+    let unstuckBlocks = this.pendingBlocks.get(block.id) || [];
+    // Remove these blocks from the pending set.
+    this.pendingBlocks.delete(block.id);
+    unstuckBlocks.forEach((b) => {
+      this.log(`Processing unstuck block ${b.id}`);
+      this.receiveBlock(b);
+    });
+
+    return block;
+  }
+
+  finishBlock(block)
+  {
+    this.currentBlock = block;
+    this.currentBlock.rewardAddr = this.address;
+
+    // Merging txSet into the transaction queue.
+    // These transactions may include transactions not already included
+    // by a recently received block, but that the miner is aware of.
+    txSet.forEach((tx) => this.transactions.add(tx));
+
+    // TODO: Fix clients keeping old transactions for too long. Unless they get a turn to produce, they will continue to store transaction
+    // TODO: Maybe when recieving a valid block, go through the transactions and clear out the ones that are in the block
+    // Add queued-up transactions to block.
+    this.transactions.forEach((tx) => {
+      this.currentBlock.addTransaction(tx, this);
+    });
+    this.transactions.clear();
+
+    this.log(`finished block for block ${this.currentBlock.chainLength}`);
+    this.announceProof();
+    // Note: calling receiveBlock triggers a new search.
+    this.receiveBlock(this.currentBlock);
+  }
+
+  /**
+   * Broadcast the block, with a valid proof included.
+   */
+  announceProof() {
+    this.net.broadcast(Blockchain.PROOF_FOUND, this.currentBlock);
+  }
+
+  // TODO: make sure this generates the same array for each client
+  makeFTSArr(balances)
+  {
+    let arr = [];
+    let i = 0;
+    for(let {addr, bal} in balances)
+    {
+      for(let j = 0; j < bal; j++)
+      {
+        arr[i] = addr;
+        i++;
+      }
+    }
   }
 
   /**

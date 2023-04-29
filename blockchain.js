@@ -4,7 +4,7 @@
 const MISSING_BLOCK = "MISSING_BLOCK";
 const POST_TRANSACTION = "POST_TRANSACTION";
 const PROOF_FOUND = "PROOF_FOUND";
-const START_MINING = "START_MINING";  ``
+const START_MINING = "START_MINING";
 
 // Constants for mining
 const NUM_ROUNDS_MINING = 2000;
@@ -32,6 +32,7 @@ module.exports = class Blockchain {
   static get POST_TRANSACTION() { return POST_TRANSACTION; }
   static get PROOF_FOUND() { return PROOF_FOUND; }
   static get START_MINING() { return START_MINING; }
+  static get TEMPLATE_MADE() { return TEMPLATE_MADE; }
 
   static get NUM_ROUNDS_MINING() { return NUM_ROUNDS_MINING; }
 

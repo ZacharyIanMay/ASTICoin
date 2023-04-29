@@ -26,9 +26,6 @@ module.exports = class Miner extends Client {
   constructor({name, net, startingBlock, keyPair, miningRounds=Blockchain.NUM_ROUNDS_MINING} = {}) {
     super({name, net, startingBlock, keyPair});
     this.miningRounds=miningRounds;
-
-    // Set of transactions to be added to the next block.
-    this.transactions = new Set();
   }
 
   /**
@@ -36,11 +33,6 @@ module.exports = class Miner extends Client {
    */
   initialize() {
     this.startNewSearch();
-
-    this.on(Blockchain.START_MINING, this.findProof);
-    this.on(Blockchain.POST_TRANSACTION, this.addTransaction);
-
-    setTimeout(() => this.emit(Blockchain.START_MINING), 0);
   }
 
   /**
@@ -49,8 +41,6 @@ module.exports = class Miner extends Client {
    * @param {Set} [txSet] - Transactions the miner has that have not been accepted yet.
    */
   startNewSearch(txSet=new Set()) {
-    this.currentBlock = Blockchain.makeBlock(this.address, this.lastBlock);
-
     // Merging txSet into the transaction queue.
     // These transactions may include transactions not already included
     // by a recently received block, but that the miner is aware of.
@@ -61,44 +51,6 @@ module.exports = class Miner extends Client {
       this.currentBlock.addTransaction(tx, this);
     });
     this.transactions.clear();
-
-    // Start looking for a proof at 0.
-    this.currentBlock.proof = 0;
-  }
-
-  /**
-   * Looks for a "proof".  It breaks after some time to listen for messages.  (We need
-   * to do this since JS does not support concurrency).
-   * 
-   * The 'oneAndDone' field is used for testing only; it prevents the findProof method
-   * from looking for the proof again after the first attempt.
-   * 
-   * @param {boolean} oneAndDone - Give up after the first PoW search (testing only).
-   */
-  findProof(oneAndDone=false) {
-    let pausePoint = this.currentBlock.proof + this.miningRounds;
-    while (this.currentBlock.proof < pausePoint) {
-      if (this.currentBlock.hasValidProof()) {
-        this.log(`found proof for block ${this.currentBlock.chainLength}: ${this.currentBlock.proof}`);
-        this.announceProof();
-        // Note: calling receiveBlock triggers a new search.
-        this.receiveBlock(this.currentBlock);
-        break;
-      }
-      this.currentBlock.proof++;
-    }
-    // If we are testing, don't continue the search.
-    if (!oneAndDone) {
-      // Check if anyone has found a block, and then return to mining.
-      setTimeout(() => this.emit(Blockchain.START_MINING), 0);
-    }
-  }
-
-  /**
-   * Broadcast the block, with a valid proof included.
-   */
-  announceProof() {
-    this.net.broadcast(Blockchain.PROOF_FOUND, this.currentBlock);
   }
 
   /**
@@ -160,27 +112,6 @@ module.exports = class Miner extends Client {
     nbTxs.forEach((tx) => cbTxs.delete(tx));
 
     return cbTxs;
-  }
-
-  /**
-   * Returns false if transaction is not accepted. Otherwise stores
-   * the transaction to be added to the next block.
-   * 
-   * @param {Transaction | String} tx - The transaction to add.
-   */
-  addTransaction(tx) {
-    tx = Blockchain.makeTransaction(tx);
-    this.transactions.add(tx);
-  }
-
-  /**
-   * When a miner posts a transaction, it must also add it to its current list of transactions.
-   *
-   * @param  {...any} args - Arguments needed for Client.postTransaction.
-   */
-  postTransaction(...args) {
-    let tx = super.postTransaction(...args);
-    return this.addTransaction(tx);
   }
 
 };
