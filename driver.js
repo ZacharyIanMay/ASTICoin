@@ -14,9 +14,12 @@ console.log("Starting simulation.  This may take a moment...");
 let fakeNet = new FakeNet();
 
 // Clients
-let alice = new Client({name: "Alice", net: fakeNet});
+let alice = new Client({name: "Alice", net: fakeNet});//lets assume we are making alice as beacon client
 let bob = new Client({name: "Bob", net: fakeNet});
 let charlie = new Client({name: "Charlie", net: fakeNet});
+
+
+let beaconClient=alice; // assuming alice is beacon client
 
 // Miners
 let minnie = new Miner({name: "Minnie", net: fakeNet});
@@ -57,6 +60,11 @@ fakeNet.register(alice, bob, charlie, minnie, mickey);
 // Miners start mining.
 minnie.initialize();
 mickey.initialize();
+
+
+
+beaconClient.initiateVoting(); // this initiates voting 
+
 
 // Alice transfers some money to Bob.
 console.log(`Alice is transferring 40 gold to ${bob.address}`);

@@ -21,19 +21,26 @@ module.exports = class Block {
    *      produces a smaller value when hashed.
    * @param {Number} [coinbaseReward] - The gold that a miner earns for finding a block proof.
    */
-  constructor(rewardAddr, prevBlock, target=Blockchain.POW_TARGET, coinbaseReward=Blockchain.COINBASE_AMT_ALLOWED) {
+  constructor(prevBlock, target=Blockchain.POW_TARGET, coinbaseReward=Blockchain.COINBASE_AMT_ALLOWED, contributors, randomNumber) {
     this.prevBlockHash = prevBlock ? prevBlock.hashVal() : null;
     this.target = target;
-
+    this.contributors=[];
+    this.randomNumber=null;
+    this.rewardAddr='';
     // Get the balances and nonces from the previous block, if available.
     // Note that balances and nonces are NOT part of the serialized format.
     this.balances = prevBlock ? new Map(prevBlock.balances) : new Map();
     this.nextNonce = prevBlock ? new Map(prevBlock.nextNonce) : new Map();
 
-    if (prevBlock && prevBlock.rewardAddr) {
+    if (prevBlock && prevBlock.rewardAddr && prevBlock.contributors) {
       // Add the previous block's rewards to the miner who found the proof.
+      let avgReward=prevBlock.totalRewards()/(prevBlock.contributors.length+1);
+      for(let i in prevBlock.contributors){
+        let bal= this.balanceOf(i) || 0;
+        this.balances.set(i,avgReward+bal);
+      }
       let winnerBalance = this.balanceOf(prevBlock.rewardAddr) || 0;
-      this.balances.set(prevBlock.rewardAddr, winnerBalance + prevBlock.totalRewards());
+      this.balances.set(prevBlock.rewardAddr, winnerBalance + avgReward);
     }
 
     // Storing transactions in a Map to preserve key order.
