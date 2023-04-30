@@ -3,8 +3,6 @@
 let Blockchain = require('./blockchain.js');
 let Miner = require('./miner.js');
 
-const CAP = 1000000;
-
 /**
  * Miners are clients, but they also mine blocks looking for "proofs".
  */
@@ -26,22 +24,16 @@ module.exports = class Meridia extends Miner {
    *      simulate miners with more or less mining power.)
    */
   constructor({name, net, startingBlock, keyPair, miningRounds=Blockchain.NUM_ROUNDS_MINING} = {}) {
-    super({name, net, startingBlock, keyPair});
+    super({name, net, startingBlock, keyPair, miningRounds});
   }
 
   /**
    * Starts listeners and begins mining.
    */
   initialize() {
-    let temp = this.createTemplate(createRand());
+    let temp = this.createTemplate();
     this.postTemplate(temp);
     super.initialize();
-  }
-
-  receiveBlock(block) {
-    super.receiveBlock(block);
-    let b = this.createTemplate(createRand());
-    this.postTemplate(b);
   }
 
   createRand()
@@ -50,19 +42,38 @@ module.exports = class Meridia extends Miner {
     let r;
     while(!found)
     {
-        r = Math.random() * CAP;
-        let arr = this.makeFTSArr(block.prevBlock.balances);
-        if(arr[block.rand] !== this.address)
-        {
-            found = true;
-        }
+      let bal = this.lastBlock.balances;
+      let arr = this.makeFTSArr(bal);
+      r = Math.random();
+      r = r * arr.length;
+      r = Math.floor(r);
+      if(arr[r] !== this.address)
+      {
+        found = true;
+      }
     }
     return r;
   }
 
+  receiveBlock(block) {
+    super.receiveBlock(block);
+    setTimeout(() => {
+      let b = this.createTemplate();
+      this.postTemplate(b);
+    }, 100);
+    
+  }
+
+  createTemplate()
+  {
+    let block = Blockchain.makeBlock(this.lastBlock, this.createRand(), [this.address]);
+    return block;
+  }
+
   postTemplate(block)
   {
-    this.net.broadcast(Blockchain.TEMPLATE_MADE, block)
+    this.net.broadcast(Blockchain.TEMPLATE_MADE, block);
+    this.log(`Posting block at depth: ${block.chainLength}.`);
   }
 
 };

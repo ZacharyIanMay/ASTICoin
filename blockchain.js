@@ -5,6 +5,7 @@ const MISSING_BLOCK = "MISSING_BLOCK";
 const POST_TRANSACTION = "POST_TRANSACTION";
 const PROOF_FOUND = "PROOF_FOUND";
 const START_MINING = "START_MINING";
+const TEMPLATE_MADE = "TEMPLATE_MADE";
 
 // Constants for mining
 const NUM_ROUNDS_MINING = 2000;
@@ -96,6 +97,7 @@ module.exports = class Blockchain {
     }
 
     let g = this.makeBlock();
+    g.rand = 0;
 
     // Initializing starting balances in the genesis block.
     Object.keys(balances).forEach((addr) => {
@@ -135,8 +137,12 @@ module.exports = class Blockchain {
       });
     } else {
       b.prevBlockHash = o.prevBlockHash;
-      b.proof = o.proof;
+      b.rand = o.rand;
       b.rewardAddr = o.rewardAddr;
+      b.contributors = o.contributors;
+      o.balances.forEach(([clientID,amount]) => {
+        b.balances.set(clientID, amount);
+      });
       // Likewise, transactions need to be recreated and restored in a map.
       b.transactions = new Map();
       if (o.transactions) o.transactions.forEach(([txID,txJson]) => {

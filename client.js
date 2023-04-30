@@ -216,22 +216,9 @@ module.exports = class Client extends EventEmitter {
     // Ignore the block if it has been received previously.
     if (this.blocks.has(block.id)) return null;
 
-    // First, make sure that the block producer is not one of the electors
-    if(block.electors.includes(block.rewardAddr))
+    // First, make sure that the block producer is not one of the contributors
+    if(block.contributors.includes(block.rewardAddr))
     {
-      return null;
-    }
-
-    // Next, make sure that the random number in the block corresponds to the correct address
-    // TODO: also make sure this matches with the actual generated random number for this block
-    let arr = this.makeFTSArr(block.prevBlock.balances);
-    if(arr[block.rand] !== block.rewardAddr || this.rands[block.chainLength])
-    {
-      return null;
-    }
-    // First, make sure that the block has a valid proof. 
-    if (!block.hasValidProof() && !block.isGenesisBlock()) {
-      this.log(`Block ${block.id} does not have a valid proof.`);
       return null;
     }
 
@@ -250,6 +237,15 @@ module.exports = class Client extends EventEmitter {
       stuckBlocks.add(block);
 
       this.pendingBlocks.set(block.prevBlockHash, stuckBlocks);
+      return null;
+    }
+
+    // Next, make sure that the random number in the block corresponds to the correct address
+    // TODO: also make sure this matches with the actual generated random number for this block
+    let arr = this.makeFTSArr(prevBlock.balances);
+    if(arr[block.rand] !== block.rewardAddr || this.rands[block.chainLength] !== block.rand)
+    {
+      console.log(`Invalid Producer`);
       return null;
     }
 
@@ -308,15 +304,17 @@ module.exports = class Client extends EventEmitter {
     if (!block.isGenesisBlock()) {
       // Verify the block, and store it if everything looks good.
       // This code will trigger an exception if there are any invalid transactions.
+      let roundRand = block.rand;
+      this.rands[block.chainLength] = roundRand;
+      let arr = this.makeFTSArr(prevBlock.balances);
+      let prod = arr[roundRand];
+      if(this.address === prod)
+      {
+        this.log(`I am this rounds producer.`);
+        this.finishBlock(block);
+      }
       let success = block.rerun(prevBlock);
       if (!success) return null;
-    }
-
-    let roundRand = block.rand;
-    this.rands[block.chainLength] = roundRand;
-    if(this.address === roundRand)
-    {
-      this.finishBlock(block);
     }
 
     // Go through any blocks that were waiting for this block
@@ -340,6 +338,7 @@ module.exports = class Client extends EventEmitter {
     // Merging txSet into the transaction queue.
     // These transactions may include transactions not already included
     // by a recently received block, but that the miner is aware of.
+    let txSet = new Set();
     txSet.forEach((tx) => this.transactions.add(tx));
 
     // TODO: Fix clients keeping old transactions for too long. Unless they get a turn to produce, they will continue to store transaction
@@ -368,14 +367,15 @@ module.exports = class Client extends EventEmitter {
   {
     let arr = [];
     let i = 0;
-    for(let {addr, bal} in balances)
+    for(let [key, value] of balances)
     {
-      for(let j = 0; j < bal; j++)
+      for(let j = 0; j < value; j++)
       {
-        arr[i] = addr;
+        arr[i] = key;
         i++;
       }
     }
+    return arr;
   }
 
   /**

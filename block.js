@@ -21,12 +21,11 @@ module.exports = class Block {
    *      produces a smaller value when hashed.
    * @param {Number} [coinbaseReward] - The gold that a miner earns for finding a block proof.
    */
-  constructor(prevBlock, target=Blockchain.POW_TARGET, coinbaseReward=Blockchain.COINBASE_AMT_ALLOWED, contributors, randomNumber) {
+  constructor(prevBlock, randomNumber, contributors, target=Blockchain.POW_TARGET, coinbaseReward=Blockchain.COINBASE_AMT_ALLOWED) {
     this.prevBlockHash = prevBlock ? prevBlock.hashVal() : null;
     this.target = target;
-    this.contributors=[];
-    this.randomNumber=null;
-    this.rewardAddr='';
+    this.contributors=contributors;
+    this.rand=randomNumber;
     // Get the balances and nonces from the previous block, if available.
     // Note that balances and nonces are NOT part of the serialized format.
     this.balances = prevBlock ? new Map(prevBlock.balances) : new Map();
@@ -66,7 +65,7 @@ module.exports = class Block {
 
     // The address that will gain both the coinbase reward and transaction fees,
     // assuming that the block is accepted by the network.
-    this.rewardAddr = rewardAddr;
+    this.rewardAddr = '';
 
     this.coinbaseReward = coinbaseReward;
   }
@@ -152,8 +151,10 @@ module.exports = class Block {
       // Other blocks must specify transactions and proof details.
       o.transactions = Array.from(this.transactions.entries());
       o.prevBlockHash = this.prevBlockHash;
-      o.proof = this.proof;
+      o.rand = this.rand;
       o.rewardAddr = this.rewardAddr;
+      o.contributors = this.contributors;
+      o.balances = Array.from(this.balances.entries());
     }
     return o;
   }
